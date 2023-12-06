@@ -1,8 +1,15 @@
 # StageMusicBot - https://discord.gg/qBq2WSsgvv
-import asyncio, json, logging, os, discord, config, mutagen
+import asyncio
+import json
+import logging
+import os
+import discord
+import config
+import mutagen
 from discord.ext import commands
 from discord.ext.commands.errors import CommandInvokeError
 from src import get_info
+from yt_dlp import YoutubeDL
 
 logging.basicConfig(level=logging.WARN, filemode="w")
 guilds = []
@@ -29,7 +36,7 @@ async def on_ready():
         )
         return
     logging.info(f"{bot.user} has connected to Discord!")
-    
+
     stage = None
     for guild in bot.guilds:
         for channel in guild.stage_channels:
@@ -40,14 +47,15 @@ async def on_ready():
             break
 
     if not stage:
-        logging.warning(f"Unable to find a text channel named {config.STAGENAME} in any guild.")
+        logging.warning(
+            f"Unable to find a text channel named {config.STAGENAME} in any guild.")
         return
 
     text_channel_list = []
     for guild in bot.guilds:
         for channel in guild.stage_channels:
             text_channel_list.append(channel)
-    
+
     channel = stage.name
     global Vc
     global Tune
@@ -67,7 +75,8 @@ async def on_ready():
             audiofile = mutagen.File(f"songs/{Tune}")
             title = audiofile.get("title")[0]
             await bot.change_presence(activity=discord.Game(name=f"{title}"))
-            Vc.source = discord.PCMVolumeTransformer(Vc.source, volume=config.VOLUME)
+            Vc.source = discord.PCMVolumeTransformer(
+                Vc.source, volume=config.VOLUME)
             if "suppress=False" in str(stage.voice_states):
                 pass
             else:
@@ -124,5 +133,61 @@ async def nowplaying(ctx):
             pass
         await ctx.reply(embed=embed)
 
+
+@bot.command(name="play",
+             description="Command to play a song",
+             aliases=["p"],)
+async def play(ctx, link):
+    global Vc
+
+    try:
+        if ctx.author.voice is None:
+            await ctx.reply("You need to be in a voice channel to use this command")
+            return
+        elif Vc is None:
+            Vc = await ctx.author.voice.channel.connect()
+        elif Vc.is_connected():
+            pass
+    except Exception as e:
+        Vc = await ctx.author.voice.channel.connect()
+
+    if Vc.is_playing():
+        Vc.stop()
+
+    try:
+        # Check if the bot is already in a voice channel
+        if not Vc:
+            logging.warning("The bot is not in a voice channel.")
+            return
+
+        # Download the audio from the provided link
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+        }
+
+        print(link)
+        # Download the audio from the provided link
+        with YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(link, download=False)
+            url = info_dict.get("url", None)
+
+        # Update the song list
+        # Tune = get_info.write_song()
+
+        await ctx.reply(f"Now playing {info_dict['title']}")
+        Vc.play(discord.FFmpegPCMAudio(
+            url, before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"))
+
+        # Update the presence with the new song title
+        # audiofile = mutagen.File(url)
+        # title = audiofile.get("title")[0]
+
+    except Exception as e:
+        logging.error(f"An error occurred while playing the song: {e}")
 
 bot.run(config.TOKEN, reconnect=True)

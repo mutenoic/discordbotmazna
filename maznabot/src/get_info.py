@@ -1,4 +1,6 @@
-import mutagen, random, os
+import mutagen
+import random
+import os
 
 
 def info(Tune):
