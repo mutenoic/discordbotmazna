@@ -1,0 +1,12 @@
+# Custom User-Added Files
+*.mp3
+Token.txt
+config.json
+albumart.json
+songs.txt
+/.vscode
+*.pyc
+main.log
+.venv
+
+*.opus
