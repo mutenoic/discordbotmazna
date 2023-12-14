@@ -1,7 +1,7 @@
-# StageMusicBot - https://discord.gg/qBq2WSsgvv
 import asyncio
 import json
 import logging
+import youtube_dl
 import os
 import discord
 import config
@@ -26,6 +26,57 @@ bot = commands.Bot(
     intents=discord.Intents.all(),
 )
 
+queue = []
+
+async def play_next_song(ctx):
+    global skip_song
+
+    while True:
+        if not queue:
+            await asyncio.sleep(1)
+        else:
+            song_url = queue.pop(0)
+            await play_song(ctx, song_url)
+
+            # Check if the skip flag is set
+            if skip_song:
+                skip_song = False
+                continue  # Skip to the next song without waiting for it to finish
+
+            # If the skip flag is not set, wait for the current song to finish
+            while Vc.is_playing():
+                await asyncio.sleep(1)
+
+async def play_song(ctx, url):
+    global Vc, Tune
+
+    try:
+        if Vc is None or not Vc.is_connected():
+            # Connect to the voice channel
+            Vc = await ctx.author.voice.channel.connect()
+
+        # Use youtube_dl to get the audio URL
+        with youtube_dl.YoutubeDL() as ydl:
+            info_dict = ydl.extract_info(url, download=False)
+            audio_url = info_dict.get("url", None)
+
+        print(f"Playing song: {url}")
+        # Update the song list
+        Tune = get_info.write_song()
+
+        # Play the song
+        Vc.play(discord.FFmpegPCMAudio(
+            audio_url, before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"))
+
+        print(f"Song started playing: {url}")
+
+        # Update the presence with the new song title
+        audiofile = mutagen.File(audio_url)
+        title = audiofile.get("title")[0]
+        await bot.change_presence(activity=discord.Game(name=f"{title}"))
+
+    except Exception as e:
+        logging.error(f"An error occurred while playing the song: {e}")
 
 @bot.event
 async def on_ready():
@@ -55,7 +106,7 @@ async def on_ready():
     for guild in bot.guilds:
         for channel in guild.stage_channels:
             text_channel_list.append(channel)
-
+    
     channel = stage.name
     global Vc
     global Tune
@@ -81,6 +132,8 @@ async def on_ready():
                 pass
             else:
                 await member.edit(suppress=False)
+            if queue and not Vc.is_playing():
+                await play_next_song(stage)
 
 
 @bot.event
@@ -93,13 +146,11 @@ async def on_voice_state_update(name, past, current):
         # In this situation, the bot MAY still be disconnected, however I'm not sure on the fix for that unless I rewrite this first. It's a massive mess, but so far, an improvement
         pass
 
-
 @bot.command(name="close")
 async def close(ctx):
     logging.warning("Shutting down via command")
     logging.shutdown()
     await bot.close()
-
 
 @bot.command(
     name="nowplaying",
@@ -134,9 +185,42 @@ async def nowplaying(ctx):
         await ctx.reply(embed=embed)
 
 
-@bot.command(name="play",
-             description="Command to play a song",
-             aliases=["p"],)
+@bot.command(name="pause", description="Command to pause the currently playing song")
+async def pause(ctx):
+    if Vc.is_playing():
+        Vc.pause()
+        await ctx.reply("Paused the song.")
+    else:
+        await ctx.reply("No song is currently playing.")
+
+@bot.command(name="resume", description="Command to resume the paused song")
+async def resume(ctx):
+    if Vc.is_paused():
+        Vc.resume()
+        await ctx.reply("Resumed the song.")
+    else:
+        await ctx.reply("The song is not paused.")
+@bot.command(name="skip", description="Command to skip the currently playing song")
+async def skip(ctx):
+    global Vc
+
+    if Vc.is_playing() or Vc.is_paused():
+        # Set a flag to indicate that the song should be skipped
+        global skip_song
+        skip_song = True
+        await ctx.reply("Skipped the current song.")
+    else:
+        await ctx.reply("No song is currently playing.")
+
+# Add this global variable at the beginning of your code
+skip_song = False
+
+
+@bot.command(
+    name="play",
+    description="Command to play a song",
+    aliases=["p"],
+)
 async def play(ctx, link):
     global Vc
 
@@ -150,9 +234,6 @@ async def play(ctx, link):
             pass
     except Exception as e:
         Vc = await ctx.author.voice.channel.connect()
-
-    if Vc.is_playing():
-        Vc.stop()
 
     try:
         # Check if the bot is already in a voice channel
@@ -170,24 +251,22 @@ async def play(ctx, link):
             }],
         }
 
-        print(link)
         # Download the audio from the provided link
         with YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(link, download=False)
             url = info_dict.get("url", None)
 
-        # Update the song list
-        # Tune = get_info.write_song()
+        # Enqueue the song
+        queue.append(url)
 
-        await ctx.reply(f"Now playing {info_dict['title']}")
-        Vc.play(discord.FFmpegPCMAudio(
-            url, before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"))
+        await ctx.reply(f"Queued {info_dict['title']}")
 
-        # Update the presence with the new song title
-        # audiofile = mutagen.File(url)
-        # title = audiofile.get("title")[0]
+        # If the bot is not playing anything, start playing from the queue
+        if not Vc.is_playing() and not Vc.is_paused():
+            await play_next_song(ctx)
 
     except Exception as e:
-        logging.error(f"An error occurred while playing the song: {e}")
+        logging.error(f"An error occurred while queuing the song: {e}")
 
-bot.run(config.TOKEN, reconnect=True)
+if __name__ == "__main__":
+    bot.run(config.TOKEN, reconnect=True)
