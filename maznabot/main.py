@@ -28,24 +28,27 @@ bot = commands.Bot(
 
 queue = []
 
+
 async def play_next_song(ctx):
     global skip_song
+    global Vc
 
-    while True:
-        if not queue:
-            await asyncio.sleep(1)
-        else:
-            song_url = queue.pop(0)
-            await play_song(ctx, song_url)
+    # If there are no songs in the queue, disconnect the bot from the voice channel and return
+    if len(queue) == 0:
+        await ctx.reply("Queue is empty, disconnecting")
+        await Vc.disconnect()
+        Vc = None
+        return
 
-            # Check if the skip flag is set
-            if skip_song:
-                skip_song = False
-                continue  # Skip to the next song without waiting for it to finish
+    # If the skip_song variable was set to True, don't play the next song in the queue
+    if skip_song:
+        skip_song = False
+        return
 
-            # If the skip flag is not set, wait for the current song to finish
-            while Vc.is_playing():
-                await asyncio.sleep(1)
+    # Get the next song from the queue and play it
+    url = queue.pop(0)
+    await play_song(ctx, url)
+
 
 async def play_song(ctx, url):
     global Vc, Tune
@@ -68,6 +71,16 @@ async def play_song(ctx, url):
         Vc.play(discord.FFmpegPCMAudio(
             audio_url, before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"))
 
+        # When the song is done playing, play the next one if there is one
+        Vc.source = discord.PCMVolumeTransformer(
+            Vc.source, volume=config.VOLUME)
+        if "suppress=False" in str(ctx.voice_states):
+            pass
+        else:
+            await member.edit(suppress=False)
+        if queue and not Vc.is_playing():
+            await play_next_song(ctx)
+
         print(f"Song started playing: {url}")
 
         # Update the presence with the new song title
@@ -77,6 +90,7 @@ async def play_song(ctx, url):
 
     except Exception as e:
         logging.error(f"An error occurred while playing the song: {e}")
+
 
 @bot.event
 async def on_ready():
@@ -106,7 +120,7 @@ async def on_ready():
     for guild in bot.guilds:
         for channel in guild.stage_channels:
             text_channel_list.append(channel)
-    
+
     channel = stage.name
     global Vc
     global Tune
@@ -146,11 +160,13 @@ async def on_voice_state_update(name, past, current):
         # In this situation, the bot MAY still be disconnected, however I'm not sure on the fix for that unless I rewrite this first. It's a massive mess, but so far, an improvement
         pass
 
+
 @bot.command(name="close")
 async def close(ctx):
     logging.warning("Shutting down via command")
     logging.shutdown()
     await bot.close()
+
 
 @bot.command(
     name="nowplaying",
@@ -193,6 +209,7 @@ async def pause(ctx):
     else:
         await ctx.reply("No song is currently playing.")
 
+
 @bot.command(name="resume", description="Command to resume the paused song")
 async def resume(ctx):
     if Vc.is_paused():
@@ -200,18 +217,19 @@ async def resume(ctx):
         await ctx.reply("Resumed the song.")
     else:
         await ctx.reply("The song is not paused.")
+
+
 @bot.command(name="skip", description="Command to skip the currently playing song")
 async def skip(ctx):
     global Vc
 
-    if Vc.is_playing() or Vc.is_paused():
-        # Set a flag to indicate that the song should be skipped
-        global skip_song
-        skip_song = True
-        await ctx.reply("Skipped the current song.")
+    if Vc.is_playing():
+        Vc.stop()
+        await ctx.reply("Skipped the song.")
     else:
         await ctx.reply("No song is currently playing.")
 
+    await play_next_song(ctx)
 # Add this global variable at the beginning of your code
 skip_song = False
 
