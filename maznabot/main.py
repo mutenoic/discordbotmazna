@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import youtube_dl
 import os
 import discord
 import config
@@ -43,6 +42,8 @@ async def play_next_song(ctx):
     # If the skip_song variable was set to True, don't play the next song in the queue
     if skip_song:
         skip_song = False
+        queue.pop(0)
+        await play_next_song(ctx)
         return
 
     # Get the next song from the queue and play it
@@ -59,7 +60,7 @@ async def play_song(ctx, url):
             Vc = await ctx.author.voice.channel.connect()
 
         # Use youtube_dl to get the audio URL
-        with youtube_dl.YoutubeDL() as ydl:
+        with YoutubeDL() as ydl:
             info_dict = ydl.extract_info(url, download=False)
             audio_url = info_dict.get("url", None)
 
@@ -67,22 +68,16 @@ async def play_song(ctx, url):
         # Update the song list
         Tune = get_info.write_song()
 
-        # Play the song
         Vc.play(discord.FFmpegPCMAudio(
             audio_url, before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"))
 
-        # When the song is done playing, play the next one if there is one
-        Vc.source = discord.PCMVolumeTransformer(
-            Vc.source, volume=config.VOLUME)
-        if "suppress=False" in str(ctx.voice_states):
-            pass
-        else:
-            await member.edit(suppress=False)
-        if queue and not Vc.is_playing():
-            await play_next_song(ctx)
+        # Update the queue list
 
-        print(f"Song started playing: {url}")
+        # Wait for the song to finish playing or for the user to skip it
+        task = asyncio.create_task(while_playing_song(ctx))
 
+        task.add_done_callback(lambda t: logging.info(
+            f"Finished playing song: {url}"))
         # Update the presence with the new song title
         audiofile = mutagen.File(audio_url)
         title = audiofile.get("title")[0]
@@ -90,6 +85,16 @@ async def play_song(ctx, url):
 
     except Exception as e:
         logging.error(f"An error occurred while playing the song: {e}")
+
+
+async def while_playing_song(ctx):
+    global Vc, Tune, skip_song
+
+    while Vc.is_playing():
+        await asyncio.sleep(1)
+
+    if (len(queue) > 0 and not Vc.is_playing()) and skip_song == False:
+        await play_next_song(ctx)
 
 
 @bot.event
@@ -221,17 +226,17 @@ async def resume(ctx):
 
 @bot.command(name="skip", description="Command to skip the currently playing song")
 async def skip(ctx):
-    global Vc
+    global skip_song
 
-    if Vc.is_playing():
-        Vc.stop()
-        await ctx.reply("Skipped the song.")
-    else:
+    if not Vc.is_playing():
         await ctx.reply("No song is currently playing.")
+        return
+
+    skip_song = True
+    await ctx.reply("Skipped the song.")
+    Vc.stop()
 
     await play_next_song(ctx)
-# Add this global variable at the beginning of your code
-skip_song = False
 
 
 @bot.command(
@@ -240,7 +245,8 @@ skip_song = False
     aliases=["p"],
 )
 async def play(ctx, link):
-    global Vc
+    global Vc, skip_song
+    skip_song = False
 
     try:
         if ctx.author.voice is None:
@@ -275,13 +281,14 @@ async def play(ctx, link):
             url = info_dict.get("url", None)
 
         # Enqueue the song
-        queue.append(url)
-
-        await ctx.reply(f"Queued {info_dict['title']}")
 
         # If the bot is not playing anything, start playing from the queue
         if not Vc.is_playing() and not Vc.is_paused():
             await play_next_song(ctx)
+
+        queue.append(url)
+
+        await ctx.reply(f"Queued {info_dict['title']}")
 
     except Exception as e:
         logging.error(f"An error occurred while queuing the song: {e}")
