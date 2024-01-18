@@ -9,6 +9,9 @@ from discord.ext import commands
 from discord.ext.commands.errors import CommandInvokeError
 from src import get_info
 from yt_dlp import YoutubeDL
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
+from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
 
 logging.basicConfig(level=logging.WARN, filemode="w")
 guilds = []
@@ -27,28 +30,47 @@ bot = commands.Bot(
 
 queue = []
 
+sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=SPOTIFY_CLIENT_ID, client_secret=SPOTIFY_CLIENT_SECRET))
+
 
 async def play_next_song(ctx):
     global skip_song
     global Vc
 
-    # If there are no songs in the queue, disconnect the bot from the voice channel and return
     if len(queue) == 0:
         await ctx.reply("Queue is empty, disconnecting")
         await Vc.disconnect()
         Vc = None
         return
 
-    # If the skip_song variable was set to True, don't play the next song in the queue
     if skip_song:
         skip_song = False
         queue.pop(0)
         await play_next_song(ctx)
         return
 
-    # Get the next song from the queue and play it
     url = queue.pop(0)
     await play_song(ctx, url)
+
+
+@bot.command(name="shuffle", description="Command to shuffle the song queue")
+async def shuffle(ctx):
+    global queue
+    if len(queue) > 1:
+        queue = queue[1:] + [queue[0]]
+        await ctx.reply("Queue shuffled.")
+    else:
+        await ctx.reply("Not enough songs in the queue to shuffle.")
+
+
+@bot.command(name="clear", description="Command to clear the song queue")
+async def clear(ctx):
+    global queue
+    if len(queue) > 0:
+        queue.clear()
+        await ctx.reply("Queue cleared.")
+    else:
+        await ctx.reply("The queue is already empty.")
 
 
 async def play_song(ctx, url):
@@ -56,29 +78,23 @@ async def play_song(ctx, url):
 
     try:
         if Vc is None or not Vc.is_connected():
-            # Connect to the voice channel
             Vc = await ctx.author.voice.channel.connect()
 
-        # Use youtube_dl to get the audio URL
         with YoutubeDL() as ydl:
             info_dict = ydl.extract_info(url, download=False)
             audio_url = info_dict.get("url", None)
 
         print(f"Playing song: {url}")
-        # Update the song list
         Tune = get_info.write_song()
 
         Vc.play(discord.FFmpegPCMAudio(
             audio_url, before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"))
 
-        # Update the queue list
-
-        # Wait for the song to finish playing or for the user to skip it
         task = asyncio.create_task(while_playing_song(ctx))
 
         task.add_done_callback(lambda t: logging.info(
             f"Finished playing song: {url}"))
-        # Update the presence with the new song title
+
         audiofile = mutagen.File(audio_url)
         title = audiofile.get("title")[0]
         await bot.change_presence(activity=discord.Game(name=f"{title}"))
@@ -162,7 +178,6 @@ async def on_voice_state_update(name, past, current):
         logging.shutdown()
         await bot.close()
     else:
-        # In this situation, the bot MAY still be disconnected, however I'm not sure on the fix for that unless I rewrite this first. It's a massive mess, but so far, an improvement
         pass
 
 
@@ -244,7 +259,7 @@ async def skip(ctx):
     description="Command to play a song",
     aliases=["p"],
 )
-async def play(ctx, link):
+async def play(ctx, link, *, query):
     global Vc, skip_song
     skip_song = False
 
@@ -260,12 +275,14 @@ async def play(ctx, link):
         Vc = await ctx.author.voice.channel.connect()
 
     try:
-        # Check if the bot is already in a voice channel
         if not Vc:
             logging.warning("The bot is not in a voice channel.")
             return
+        
+        if "spotify" in query.lower():
+            track_info = sp.track(query)
+            url = track_info['preview_url']
 
-        # Download the audio from the provided link
         ydl_opts = {
             'format': 'bestaudio/best',
             'postprocessors': [{
@@ -275,14 +292,10 @@ async def play(ctx, link):
             }],
         }
 
-        # Download the audio from the provided link
         with YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(link, download=False)
+            info_dict = ydl.extract_info(query, download=False)
             url = info_dict.get("url", None)
 
-        # Enqueue the song
-
-        # If the bot is not playing anything, start playing from the queue
         if not Vc.is_playing() and not Vc.is_paused():
             await play_next_song(ctx)
 
