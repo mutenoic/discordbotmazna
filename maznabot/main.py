@@ -10,8 +10,7 @@ from discord.ext.commands.errors import CommandInvokeError
 from src import get_info
 from yt_dlp import YoutubeDL
 import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
-from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
+from spotipy.oauth2 import SpotifyOAuth
 
 logging.basicConfig(level=logging.WARN, filemode="w")
 guilds = []
@@ -28,50 +27,28 @@ bot = commands.Bot(
     intents=discord.Intents.all(),
 )
 
+sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=config.SPOTIPY_CLIENT_ID,
+                                               client_secret=config.SPOTIPY_CLIENT_SECRET,
+                                               redirect_uri=config.SPOTIPY_REDIRECT_URI,
+                                               scope=config.SPOTIPY_SCOPE))
+
 queue = []
-
-sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=SPOTIFY_CLIENT_ID, client_secret=SPOTIFY_CLIENT_SECRET))
-
 
 async def play_next_song(ctx):
     global skip_song
     global Vc
 
-    if len(queue) == 0:
-        await ctx.reply("Queue is empty, disconnecting")
-        await Vc.disconnect()
-        Vc = None
-        return
-
     if skip_song:
         skip_song = False
-        queue.pop(0)
-        await play_next_song(ctx)
+        if len(queue) > 0:
+            await play_next_song(ctx)
+        return
+
+    if len(queue) == 0:
         return
 
     url = queue.pop(0)
     await play_song(ctx, url)
-
-
-@bot.command(name="shuffle", description="Command to shuffle the song queue")
-async def shuffle(ctx):
-    global queue
-    if len(queue) > 1:
-        queue = queue[1:] + [queue[0]]
-        await ctx.reply("Queue shuffled.")
-    else:
-        await ctx.reply("Not enough songs in the queue to shuffle.")
-
-
-@bot.command(name="clear", description="Command to clear the song queue")
-async def clear(ctx):
-    global queue
-    if len(queue) > 0:
-        queue.clear()
-        await ctx.reply("Queue cleared.")
-    else:
-        await ctx.reply("The queue is already empty.")
-
 
 async def play_song(ctx, url):
     global Vc, Tune
@@ -102,7 +79,6 @@ async def play_song(ctx, url):
     except Exception as e:
         logging.error(f"An error occurred while playing the song: {e}")
 
-
 async def while_playing_song(ctx):
     global Vc, Tune, skip_song
 
@@ -112,6 +88,86 @@ async def while_playing_song(ctx):
     if (len(queue) > 0 and not Vc.is_playing()) and skip_song == False:
         await play_next_song(ctx)
 
+@bot.command(
+    name="spotify",
+    description="Command to search and play a song from Spotify",
+)
+async def spotify(ctx, *, query):
+    global Vc, skip_song
+    skip_song = False
+
+    try:
+        if ctx.author.voice is None:
+            await ctx.reply("You need to be in a voice channel to use this command")
+            return
+        elif Vc is None or not Vc.is_connected():
+            Vc = await ctx.author.voice.channel.connect()
+
+    except Exception as e:
+        Vc = await ctx.author.voice.channel.connect()
+
+    try:
+        results = sp.search(q=query, type='track', limit=1)
+
+        if not results['tracks']['items']:
+            await ctx.reply("No results found on Spotify.")
+            return
+
+        track_info = results['tracks']['items'][0]
+        track_name = track_info['name']
+        track_url = track_info['external_urls']['spotify']
+
+        if not Vc.is_playing() and not Vc.is_paused():
+            queue.append(track_url)
+            await play_next_song(ctx)
+
+        else:
+            queue.append(track_url)
+            await ctx.reply(f"Queued {track_name} from Spotify")
+
+    except Exception as e:
+        logging.error(f"An error occurred while queuing the song from Spotify: {e}")
+
+@bot.command(
+    name="spotify_playlist",
+    description="Command to play a Spotify playlist",
+)
+async def spotify_playlist(ctx, playlist_url):
+    global Vc, skip_song
+    skip_song = False
+
+    try:
+        if ctx.author.voice is None:
+            await ctx.reply("You need to be in a voice channel to use this command")
+            return
+        elif Vc is None or not Vc.is_connected():
+            Vc = await ctx.author.voice.channel.connect()
+
+    except Exception as e:
+        Vc = await ctx.author.voice.channel.connect()
+
+    try:
+        playlist_id = playlist_url.split('/')[-1]
+        results = sp.playlist_tracks(playlist_id)
+
+        if not results['items']:
+            await ctx.reply("No tracks found in the Spotify playlist.")
+            return
+
+        for track_info in results['items']:
+            track_name = track_info['track']['name']
+            track_url = track_info['track']['external_urls']['spotify']
+
+            queue.append(track_url)
+
+        if not Vc.is_playing() and not Vc.is_paused():
+            await play_next_song(ctx)
+
+        else:
+            await ctx.reply(f"Queued {len(results['items'])} songs from Spotify playlist")
+
+    except Exception as e:
+        logging.error(f"An error occurred while queuing the Spotify playlist: {e}")
 
 @bot.event
 async def on_ready():
@@ -121,6 +177,7 @@ async def on_ready():
             'Unable to find "songs" directory. Please ensure there is a "songs" directory present at the same level as this file'
         )
         return
+
     logging.info(f"{bot.user} has connected to Discord!")
 
     stage = None
@@ -151,6 +208,7 @@ async def on_ready():
         await member.edit(suppress=False)
     except CommandInvokeError:
         pass
+
     while True:
         while Vc.is_playing():
             await asyncio.sleep(1)
@@ -170,23 +228,51 @@ async def on_ready():
             if queue and not Vc.is_playing():
                 await play_next_song(stage)
 
+@bot.command(
+    name="info",
+    description="Command to show bot information and commands",
+    aliases=["commands"]
+)
+async def bot_info(ctx):
+    embed = discord.Embed(color=0x3498db, title="Bot Information", description="This bot is still in development.")
+    embed.add_field(name="Commands", value="1. *play [link] - Play a song\n2. *pause - Pause the currently playing song\n3. *resume - Resume the paused song\n4. *skip - Skip the currently playing song\n5. *queue - Display the song queue\n6. *nowplaying - Check the currently playing song\n7. *info - Show bot information and commands\n8. *close - Shut down the bot", inline=False)
+    await ctx.reply(embed=embed)
+
+@bot.command(
+    name="shuffle",
+    description="Command to shuffle the song queue"
+)
+async def shuffle_queue(ctx):
+    if len(queue) < 2:
+        await ctx.reply("The queue must have at least two songs to be shuffled.")
+        return
+
+    import random
+    random.shuffle(queue)
+    await ctx.reply("The queue has been shuffled.")
 
 @bot.event
-async def on_voice_state_update(name, past, current):
-    if current.channel == None and name.name == bot.user.id:
+async def on_voice_state_update(member, before, after):
+    global Vc
+
+    if member == bot.user and after.channel is None:
         logging.warning("Shutting down due to disconnect")
         logging.shutdown()
         await bot.close()
-    else:
-        pass
 
+    if member == bot.user and before.channel is not None and after.channel is not None:
+        if Vc and Vc.is_connected():
+            await Vc.move_to(after.channel)
+        else:
+            Vc = await after.channel.connect()
+
+    pass
 
 @bot.command(name="close")
 async def close(ctx):
     logging.warning("Shutting down via command")
     logging.shutdown()
     await bot.close()
-
 
 @bot.command(
     name="nowplaying",
@@ -208,6 +294,7 @@ async def nowplaying(ctx):
             text="This bot is still in development, if you have any queries, please contact the owner",
             icon_url=(ctx.message.author.avatar.url),
         )
+
         if song_info[2] is not None:
             embed.add_field(name="Album", value=f"{song_info[2]}", inline=True)
             if albumart is not None:
@@ -218,8 +305,8 @@ async def nowplaying(ctx):
                     pass
         else:
             pass
-        await ctx.reply(embed=embed)
 
+        await ctx.reply(embed=embed)
 
 @bot.command(name="pause", description="Command to pause the currently playing song")
 async def pause(ctx):
@@ -229,7 +316,6 @@ async def pause(ctx):
     else:
         await ctx.reply("No song is currently playing.")
 
-
 @bot.command(name="resume", description="Command to resume the paused song")
 async def resume(ctx):
     if Vc.is_paused():
@@ -238,8 +324,10 @@ async def resume(ctx):
     else:
         await ctx.reply("The song is not paused.")
 
-
-@bot.command(name="skip", description="Command to skip the currently playing song")
+@bot.command(
+    name="skip",
+    description="Command to skip the currently playing song"
+)
 async def skip(ctx):
     global skip_song
 
@@ -248,18 +336,16 @@ async def skip(ctx):
         return
 
     skip_song = True
-    await ctx.reply("Skipped the song.")
     Vc.stop()
-
-    await play_next_song(ctx)
-
-
+    await ctx.reply("Skipped the song.")
+    if len(queue) > 0:
+        await play_next_song(ctx)
 @bot.command(
     name="play",
     description="Command to play a song",
     aliases=["p"],
 )
-async def play(ctx, link, *, query):
+async def play(ctx, link):
     global Vc, skip_song
     skip_song = False
 
@@ -267,10 +353,9 @@ async def play(ctx, link, *, query):
         if ctx.author.voice is None:
             await ctx.reply("You need to be in a voice channel to use this command")
             return
-        elif Vc is None:
+        elif Vc is None or not Vc.is_connected():
             Vc = await ctx.author.voice.channel.connect()
-        elif Vc.is_connected():
-            pass
+
     except Exception as e:
         Vc = await ctx.author.voice.channel.connect()
 
@@ -278,10 +363,6 @@ async def play(ctx, link, *, query):
         if not Vc:
             logging.warning("The bot is not in a voice channel.")
             return
-        
-        if "spotify" in query.lower():
-            track_info = sp.track(query)
-            url = track_info['preview_url']
 
         ydl_opts = {
             'format': 'bestaudio/best',
@@ -293,18 +374,44 @@ async def play(ctx, link, *, query):
         }
 
         with YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(query, download=False)
+            info_dict = ydl.extract_info(link, download=False)
             url = info_dict.get("url", None)
 
         if not Vc.is_playing() and not Vc.is_paused():
+            queue.append(url)
             await play_next_song(ctx)
+            await ctx.reply(f"Now playing {info_dict['title']}!")
 
-        queue.append(url)
-
-        await ctx.reply(f"Queued {info_dict['title']}")
+        else:
+            queue.append(url)
+            await ctx.reply(f"Queued {info_dict['title']}")
 
     except Exception as e:
         logging.error(f"An error occurred while queuing the song: {e}")
+
+@bot.command(
+    name="queue",
+    aliases=["q"]
+)
+async def show_queue(ctx):
+    if not queue:
+        await ctx.reply("The queue is empty.")
+        return
+
+    embed = discord.Embed(color=0x3498db, title="Song Queue", description="Here is the current song queue:")
+    
+    for i, url in enumerate(queue, start=1):
+        with YoutubeDL() as ydl:
+            info_dict = ydl.extract_info(url, download=False)
+            title = info_dict.get("title", "Unknown Title")
+            duration = info_dict.get("duration", 0)
+            minutes, seconds = divmod(duration, 60)
+            duration_formatted = f"{minutes}:{seconds:02}"
+
+        embed.add_field(name=f"#{i} - {title}", value=f"Duration: {duration_formatted}", inline=False)
+
+    await ctx.reply(embed=embed)
+
 
 if __name__ == "__main__":
     bot.run(config.TOKEN, reconnect=True)
