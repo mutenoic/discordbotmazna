@@ -78,15 +78,16 @@ async def play_song(ctx, url):
 
     except Exception as e:
         logging.error(f"An error occurred while playing the song: {e}")
-
+        
 async def while_playing_song(ctx):
     global Vc, Tune, skip_song
 
-    while Vc.is_playing():
+    while Vc.is_playing() or Vc.is_paused():
         await asyncio.sleep(1)
 
-    if (len(queue) > 0 and not Vc.is_playing()) and skip_song == False:
+    if len(queue) > 0 and not Vc.is_playing() and not skip_song:
         await play_next_song(ctx)
+
 
 @bot.command(
     name="spotify",
@@ -323,7 +324,6 @@ async def resume(ctx):
         await ctx.reply("Resumed the song.")
     else:
         await ctx.reply("The song is not paused.")
-
 @bot.command(
     name="skip",
     description="Command to skip the currently playing song"
@@ -336,10 +336,12 @@ async def skip(ctx):
         return
 
     skip_song = True
-    Vc.stop()
+    Vc.pause()  # Pause the current song instead of stopping it
     await ctx.reply("Skipped the song.")
     if len(queue) > 0:
         await play_next_song(ctx)
+
+
 @bot.command(
     name="play",
     description="Command to play a song",
