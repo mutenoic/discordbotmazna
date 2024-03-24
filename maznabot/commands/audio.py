@@ -1,5 +1,6 @@
 from yt_dlp import YoutubeDL
 from src import get_info
+from typing import Union
 from config import bot
 from main import albumart, discord, asyncio, logging, mutagen, random
 
@@ -63,7 +64,7 @@ async def while_playing_song(ctx):
 
 
 
-@bot.command(name="pause", description="Command to pause the currently playing song")
+@bot.tree.command(name="pause", description="Command to pause the currently playing song")
 async def pause(ctx):
     if Vc.is_playing():
         Vc.pause()
@@ -71,14 +72,15 @@ async def pause(ctx):
     else:
         await ctx.reply("No song is currently playing.")
 
-@bot.command(name="resume", description="Command to resume the paused song")
+@bot.tree.command(name="resume", description="Command to resume the paused song")
 async def resume(ctx):
     if Vc.is_paused():
         Vc.resume()
         await ctx.reply("Resumed the song.")
     else:
         await ctx.reply("The song is not paused.")
-@bot.command(
+
+@bot.tree.command(
     name="skip",
     description="Command to skip the currently playing song"
 )
@@ -90,30 +92,28 @@ async def skip(ctx):
         return
 
     skip_song = True
-    Vc.pause()  # Pause the current song instead of stopping it
+    Vc.pause()
     await ctx.reply("Skipped the song.")
     if len(queue) > 0:
         await play_next_song(ctx)
 
-
-@bot.command(
+@bot.tree.command(
     name="play",
-    description="Command to play a song",
-    aliases=["p"],
+    description="Command to play a song"
 )
-async def play(ctx, link):
+async def play(interaction, link: str = None):
     global Vc, skip_song
     skip_song = False
 
     try:
-        if ctx.author.voice is None:
-            await ctx.reply("You need to be in a voice channel to use this command")
+        if interaction.user.voice is None:
+            await interaction.response.send_message("You need to be in a voice channel to use this command", ephemeral=True)
             return
         elif Vc is None or not Vc.is_connected():
-            Vc = await ctx.author.voice.channel.connect()
+            Vc = await interaction.user.voice.channel.connect()
 
     except Exception as e:
-        Vc = await ctx.author.voice.channel.connect()
+        Vc = await interaction.user.voice.channel.connect()
 
     try:
         if not Vc:
@@ -135,19 +135,19 @@ async def play(ctx, link):
 
         if not Vc.is_playing() and not Vc.is_paused():
             queue.append(url)
-            await play_next_song(ctx)
-            await ctx.reply(f"Now playing {info_dict['title']}!")
+            await play_next_song(interaction)
+            await interaction.response.send_message(f"Now playing {info_dict['title']}!", ephemeral=True)
 
         else:
             queue.append(url)
-            await ctx.reply(f"Queued {info_dict['title']}")
+            await interaction.response.send_message(f"Queued {info_dict['title']}", ephemeral=True)
 
     except Exception as e:
         logging.error(f"An error occurred while queuing the song: {e}")
 
-@bot.command(
+
+@bot.tree.command(
     name="queue",
-    aliases=["q"]
 )
 async def show_queue(ctx):
     if not queue:
@@ -168,17 +168,16 @@ async def show_queue(ctx):
 
     await ctx.reply(embed=embed)
 
-@bot.command(
+@bot.tree.command(
     name="info",
     description="Command to show bot information and commands",
-    aliases=["commands"]
 )
 async def bot_info(ctx):
     embed = discord.Embed(color=0x3498db, title="Bot Information", description="This bot is still in development.")
     embed.add_field(name="Commands", value="1. *play [link] - Play a song\n2. *pause - Pause the currently playing song\n3. *resume - Resume the paused song\n4. *skip - Skip the currently playing song\n5. *queue - Display the song queue\n6. *nowplaying - Check the currently playing song\n7. *info - Show bot information and commands\n8. *close - Shut down the bot", inline=False)
     await ctx.reply(embed=embed)
 
-@bot.command(
+@bot.tree.command(
     name="shuffle",
     description="Command to shuffle the song queue"
 )
@@ -207,16 +206,15 @@ async def on_voice_state_update(member, before, after):
 
     pass
 
-@bot.command(name="close")
+@bot.tree.command(name="close")
 async def close(ctx):
     logging.warning("Shutting down via command")
     logging.shutdown()
     await bot.close()
 
-@bot.command(
+@bot.tree.command(
     name="nowplaying",
     description="Command to check what song is currently playing",
-    aliases=["np"],
 )
 async def nowplaying(ctx):
     try:

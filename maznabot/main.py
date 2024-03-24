@@ -3,6 +3,8 @@ import json
 import logging
 import os
 import discord
+from discord import app_commands
+from discord.ext import commands
 from config import bot, CommandInvokeError
 import config
 import random
@@ -24,14 +26,15 @@ if os.path.exists("./albumart.json"):
 else:
     albumart = None
 
-
-sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=config.SPOTIPY_CLIENT_ID,
-                                               client_secret=config.SPOTIPY_CLIENT_SECRET,
-                                               redirect_uri=config.SPOTIPY_REDIRECT_URI,
-                                               scope=config.SPOTIPY_SCOPE))
-
 @bot.event
 async def on_ready():
+    print("Ready!")
+    try:
+        synced = await bot.tree.sync()
+        print(f"synced {len(synced)} command")
+    except Exception as e:
+        print(e)
+    
     global save_guild
     if not os.path.exists("./songs"):
         logging.warning(
