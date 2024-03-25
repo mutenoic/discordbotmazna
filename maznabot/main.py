@@ -15,6 +15,8 @@ from spotipy.oauth2 import SpotifyOAuth
 
 from commands.audio import *
 from commands.games import *
+from commands.movies import *
+from commands.xp import *
 
 logging.basicConfig(level=logging.WARN, filemode="w")
 guilds = []
@@ -26,6 +28,7 @@ if os.path.exists("./albumart.json"):
 else:
     albumart = None
 
+
 @bot.event
 async def on_ready():
     print("Ready!")
@@ -34,7 +37,7 @@ async def on_ready():
         print(f"synced {len(synced)} command")
     except Exception as e:
         print(e)
-    
+
     global save_guild
     if not os.path.exists("./songs"):
         logging.warning(

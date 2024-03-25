@@ -34,7 +34,8 @@ async def number_guessing_game(ctx):
             await ctx.reply("Sorry, you took too long to guess. The number was {number_to_guess}.")
             return
 
-    await ctx.reply("You've used up all your attempts! The number was {number_to_guess}.")
+    await ctx.reply(f"You've used up all your attempts! The number was {number_to_guess}.")
+
 
 @bot.command(
     name="quiz",
@@ -64,7 +65,8 @@ async def trivia_quiz(ctx):
     await ctx.reply("Welcome to the trivia quiz! Get ready to answer some questions.")
 
     for question in questions:
-        options = "\n".join([f"{i}. {option}" for i, option in enumerate(question["options"], start=1)])
+        options = "\n".join(
+            [f"{i}. {option}" for i, option in enumerate(question["options"], start=1)])
         await ctx.reply(f"{question['question']}\n{options}")
 
         def check(message):
@@ -73,7 +75,7 @@ async def trivia_quiz(ctx):
         try:
             answer = await bot.wait_for("message", check=check, timeout=30.0)
             answer = int(answer.content)
-            
+
             if question["options"][answer - 1] == question["answer"]:
                 await ctx.reply("Correct answer!")
                 score += 1
@@ -84,6 +86,7 @@ async def trivia_quiz(ctx):
 
     await ctx.reply(f"Quiz finished! Your score: {score}/{len(questions)}.")
 
+
 @bot.command(
     name="hangman",
     description="Play a game of Hangman. Try to guess the word within a limited number of attempts.",
@@ -93,13 +96,15 @@ async def hangman(ctx):
     word_to_guess = random.choice(words)
     guessed_letters = []
     attempts = 6  # Number of attempts allowed
-    revealed_word = ["_" if letter.isalpha() else letter for letter in word_to_guess]
+    revealed_word = ["_" if letter.isalpha(
+    ) else letter for letter in word_to_guess]
 
     await ctx.reply("Welcome to Hangman! Try to guess the word by typing a letter.")
 
     while attempts > 0:
         hangman_display = f"{' '.join(revealed_word)}\n"
-        hangman_display += "Guessed Letters: " + ", ".join(guessed_letters) + "\n"
+        hangman_display += "Guessed Letters: " + \
+            ", ".join(guessed_letters) + "\n"
         hangman_display += f"Attempts Remaining: {attempts}\n"
         hangman_display += hangman_art(6 - attempts)  # Display Hangman art
         await ctx.reply(hangman_display)
@@ -151,4 +156,3 @@ def hangman_art(wrong_attempts):
     for i in range(wrong_attempts):
         hangman_display += hangman_parts[i] + "\n"
     return hangman_display
-
