@@ -1,8 +1,13 @@
 from main import random, asyncio
 from config import bot
+from yt_dlp import YoutubeDL
+from src import get_info
+from typing import Union
+from config import bot
 
 
-@bot.command(
+
+@bot.tree.command(
     name="guess",
     description="Play a number guessing game. The bot will generate a random number between 1 and 100, and you have to guess it.",
 )
@@ -37,7 +42,7 @@ async def number_guessing_game(ctx):
     await ctx.reply(f"You've used up all your attempts! The number was {number_to_guess}.")
 
 
-@bot.command(
+@bot.tree.command(
     name="quiz",
     description="Play a trivia quiz game. Answer questions by selecting the correct option.",
 )
@@ -87,7 +92,7 @@ async def trivia_quiz(ctx):
     await ctx.reply(f"Quiz finished! Your score: {score}/{len(questions)}.")
 
 
-@bot.command(
+@bot.tree.command(
     name="hangman",
     description="Play a game of Hangman. Try to guess the word within a limited number of attempts.",
 )

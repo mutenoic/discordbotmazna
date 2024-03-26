@@ -14,7 +14,7 @@ def info(Tune):
     return [artist, title, album]
 
 
-def write_song():
+def write_song(info_dict):
     if not os.path.exists("./songs.txt"):
         f = open("songs.txt", "x")
         f.close()
