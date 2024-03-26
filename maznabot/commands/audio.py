@@ -16,14 +16,15 @@ async def play_next_song(ctx):
         return
 
     if len(queue) == 0:
-        current_song = {}  # Reset current_song when the queue is empty
+        current_song = {}
         return
 
-    url = queue.pop(0)
-    await play_song(ctx, url)
+    url, info_dict = queue.pop(0)
+    await play_song(ctx, url, info_dict)
 
-    # Update current_song with the information of the new song
-    current_song = await get_info(url)
+    current_song = info_dict.copy()
+
+
 async def play_song(ctx, url, info_dict):
     global Vc, current_song
 
@@ -34,7 +35,7 @@ async def play_song(ctx, url, info_dict):
         audio_url = info_dict.get("url", None)
 
         print(f"Playing song: {url}")
-        current_song = info_dict  # Store the current song info
+        current_song = info_dict
 
         Vc.play(discord.FFmpegPCMAudio(
             audio_url, before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"))
@@ -49,7 +50,6 @@ async def play_song(ctx, url, info_dict):
 
     except Exception as e:
         logging.error(f"An error occurred while playing the song: {e}")
-
 
 @bot.tree.command(
     name="play",
@@ -88,12 +88,12 @@ async def play(interaction: discord.Interaction, link: str = None):
             url = info_dict.get("url", None)
 
         if not Vc.is_playing() and not Vc.is_paused():
-            queue.append((url, info_dict))  # Pass URL along with song info
-            await play_song(interaction, url, info_dict)  # Pass song info to play_song
+            queue.append((url, info_dict))
+            await play_song(interaction, url, info_dict)
             await interaction.response.send_message(f"Now playing {info_dict['title']}!", ephemeral=True)
 
         else:
-            queue.append((url, info_dict))  # Pass URL along with song info
+            queue.append((url, info_dict))
             await interaction.response.send_message(f"Queued {info_dict['title']}", ephemeral=True)
 
     except Exception as e:
@@ -142,49 +142,47 @@ async def skip(interaction: discord.Interaction):
     await interaction.response.send_message("Skipped the song.", ephemeral=True)
     if len(queue) > 0:
         await play_next_song(interaction)
-
 @bot.tree.command(
     name="queue",
+    description="Command to display the song queue"
 )
-async def show_queue(ctx):
+async def show_queue(interaction: discord.Interaction):
     if not queue:
-        await ctx.reply("The queue is empty.")
+        await interaction.response.send_message("The queue is empty.")
         return
 
     embed = discord.Embed(color=0x3498db, title="Song Queue", description="Here is the current song queue:")
-    
-    for i, url in enumerate(queue, start=1):
-        with YoutubeDL() as ydl:
-            info_dict = ydl.extract_info(url, download=False)
-            title = info_dict.get("title", "Unknown Title")
-            duration = info_dict.get("duration", 0)
-            minutes, seconds = divmod(duration, 60)
-            duration_formatted = f"{minutes}:{seconds:02}"
 
+    for i, (url, info_dict) in enumerate(queue, start=1):
+        title = info_dict.get("title", "Unknown Title")
+        duration = info_dict.get("duration", 0)
+        minutes, seconds = divmod(duration, 60)
+        duration_formatted = f"{minutes}:{seconds:02}"
         embed.add_field(name=f"#{i} - {title}", value=f"Duration: {duration_formatted}", inline=False)
 
-    await ctx.reply(embed=embed)
+    await interaction.response.send_message(embed=embed)
+
 
 @bot.tree.command(
     name="info",
     description="Command to show bot information and commands",
 )
-async def bot_info(ctx):
+async def bot_info(interaction: discord.Interaction):
     embed = discord.Embed(color=0x3498db, title="Bot Information", description="This bot is still in development.")
     embed.add_field(name="Commands", value="1. *play [link] - Play a song\n2. *pause - Pause the currently playing song\n3. *resume - Resume the paused song\n4. *skip - Skip the currently playing song\n5. *queue - Display the song queue\n6. *nowplaying - Check the currently playing song\n7. *info - Show bot information and commands\n8. *close - Shut down the bot", inline=False)
-    await ctx.reply(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(
     name="shuffle",
     description="Command to shuffle the song queue"
 )
-async def shuffle_queue(ctx):
+async def shuffle_queue(interaction: discord.Interaction):
     if len(queue) < 2:
-        await ctx.reply("The queue must have at least two songs to be shuffled.")
+        await interaction.response.send_message("The queue must have at least two songs to be shuffled.")
         return
 
     random.shuffle(queue)
-    await ctx.reply("The queue has been shuffled.")
+    await interaction.response.send_message("The queue has been shuffled.")
     
 @bot.event
 async def on_voice_state_update(member, before, after):
