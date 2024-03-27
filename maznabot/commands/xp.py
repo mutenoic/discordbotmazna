@@ -13,27 +13,21 @@ def generateDb():
 
 @bot.event
 async def on_message(message):
-    # Check if the message is not from a bot
     generateDb()
     if not message.author.bot:
-        # Connect to the database
         conn = sqlite3.connect('xp.db')
         c = conn.cursor()
 
-        # Check if the user already exists in the database
         c.execute('SELECT xp FROM xp WHERE user_id = ?', (message.author.id,))
         result = c.fetchone()
 
         if result is None:
-            # If the user doesn't exist, insert a new row with initial XP
             c.execute('INSERT INTO xp (user_id, xp) VALUES (?, ?)',
                       (message.author.id, 1))
         else:
-            # If the user exists, update their XP by incrementing it
             c.execute('UPDATE xp SET xp = xp + 1 WHERE user_id = ?',
                       (message.author.id,))
 
-        # Commit the changes and close the connection
         conn.commit()
         current_xp = c.execute('SELECT xp FROM xp WHERE user_id = ?',
                                (message.author.id,)).fetchone()
@@ -44,20 +38,19 @@ async def on_message(message):
         print(current_xp)
         conn.close()
 
-    # Let the message continue processing
     await bot.process_commands(message)
-
+import discord
+import sqlite3
 
 @bot.tree.command(
     name='xp',
-    description='Check your XP',
+    description='Check your XP'
 )
 async def check_xp(interaction: discord.Interaction):
     generateDb()
     conn = sqlite3.connect('xp.db')
     c = conn.cursor()
     
-    # Use ctx.user.id to get the user's ID
     c.execute('SELECT xp FROM xp WHERE user_id = ?', (interaction.user.id,))
     result = c.fetchone()
     conn.close()
@@ -65,4 +58,17 @@ async def check_xp(interaction: discord.Interaction):
     if result is None:
         return await interaction.response.send_message('You have 0 XP')
     
-    return await interaction.response.send_message(f'You have {result[0]} XP')
+    xp_amount = result[0]
+    max_xp = 100
+    xp_percentage = min(xp_amount / max_xp, 1.0)
+    bar_length = 20
+    filled_length = int(bar_length * xp_percentage)
+    bar = '█' * filled_length + '-' * (bar_length - filled_length)
+
+    embed = discord.Embed(title="🌟 XP Information 🌟", description=f"You have {xp_amount} XP", color=discord.Color.gold())
+    embed.add_field(name="Progress", value=f"`[{bar}]` {int(xp_percentage * 100)}%", inline=False)
+    embed.set_author(name=f"🎮 {interaction.user.display_name} 🎮", icon_url=interaction.user.avatar.url if interaction.user.avatar else interaction.user.default_avatar_url)
+    embed.set_thumbnail(url=interaction.user.avatar.url if interaction.user.avatar else interaction.user.default_avatar_url)  # Profile picture as thumbnail
+    embed.set_footer(text="🚀 Keep leveling up! 🚀")
+
+    await interaction.response.send_message(embed=embed)
