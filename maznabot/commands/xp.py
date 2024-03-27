@@ -48,17 +48,21 @@ async def on_message(message):
     await bot.process_commands(message)
 
 
-@bot.command(
+@bot.tree.command(
     name='xp',
     description='Check your XP',
 )
-async def check_xp(ctx):
+async def check_xp(interaction: discord.Interaction):
     generateDb()
     conn = sqlite3.connect('xp.db')
     c = conn.cursor()
-    c.execute('SELECT xp FROM xp WHERE user_id = ?', (ctx.author.id,))
+    
+    # Use ctx.user.id to get the user's ID
+    c.execute('SELECT xp FROM xp WHERE user_id = ?', (interaction.user.id,))
     result = c.fetchone()
     conn.close()
+    
     if result is None:
-        return await ctx.send('You have 0 XP')
-    return await ctx.send(f'You have {result[0]} XP')
+        return await interaction.response.send_message('You have 0 XP')
+    
+    return await interaction.response.send_message(f'You have {result[0]} XP')
