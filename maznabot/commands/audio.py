@@ -3,6 +3,11 @@ from src import get_info
 from typing import Union
 from config import bot
 from main import albumart, discord, asyncio, logging, mutagen, random
+import os
+
+local_gif_path = "../resources/cats.gif"
+local_image_path = "../resources/bot_discord.png"
+
 
 current_song = {}
 queue = []
@@ -148,7 +153,7 @@ async def skip(interaction: discord.Interaction):
 )
 async def show_queue(interaction: discord.Interaction):
     if not queue:
-        await interaction.response.send_message("The queue is empty.")
+        await interaction.response.send_message("The queue is empty.", ephemeral=True)
         return
 
     embed = discord.Embed(color=0x3498db, title="Song Queue", description="Here is the current song queue:")
@@ -160,16 +165,40 @@ async def show_queue(interaction: discord.Interaction):
         duration_formatted = f"{minutes}:{seconds:02}"
         embed.add_field(name=f"#{i} - {title}", value=f"Duration: {duration_formatted}", inline=False)
 
-    await interaction.response.send_message(embed=embed)
-
-
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+    
 @bot.tree.command(
     name="info",
-    description="Command to show bot information and commands",
+    description="Command to show bot information and commands"
 )
 async def bot_info(interaction: discord.Interaction):
-    embed = discord.Embed(color=0x3498db, title="Bot Information", description="This bot is still in development.")
-    embed.add_field(name="Commands", value="1. *play [link] - Play a song\n2. *pause - Pause the currently playing song\n3. *resume - Resume the paused song\n4. *skip - Skip the currently playing song\n5. *queue - Display the song queue\n6. *nowplaying - Check the currently playing song\n7. *info - Show bot information and commands\n8. *close - Shut down the bot", inline=False)
+    embed = discord.Embed(
+        title="🎵 LEFYBOT 🎵", 
+        description="🚀💫 **Welcome to the world of LEFYBOT, where music meets magic!** 💫🚀"
+    )
+
+    embed.set_image(
+        url="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExOGtlcnppZ3J6dGtqdG9kdWk5MzJ6d2FzcDZmeGduNDE4cDUxcjhwOSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/11W37uI72pjDkk/giphy.gif"
+    )
+
+    embed.set_thumbnail(
+        url="https://cdn.discordapp.com/attachments/1103536796119347300/1222323576104030248/bot_discord.png?ex=6615cc8a&is=6603578a&hm=fd46449d585dde439f08ed30c9b06b6bf14687809c1c44659ddcd20607384d8c&"
+    )
+
+    embed.description = "🚀💫 **Welcome to the world of LEFYBOT, where music meets magic!** 💫🚀"
+    embed.color = 0x5800FF
+
+    embed.add_field(
+        name="🎶 Description",
+        value="LEFYBOT is not just any ordinary bot; it's your gateway to a symphonic paradise in Discord! Whether you're looking to groove to your favorite tunes or orchestrate a melodious masterpiece with friends, LEFYBOT is here to make your musical dreams come true!",
+        inline=False
+    )
+    embed.add_field(
+        name=" ",
+        value="🎵 `/play [link]`: Play a song\n🎵 `/pause`: Pause the currently playing song\n🎵 `/resume`: Resume the paused song\n🎵 `/skip`: Skip the currently playing song\n🎵 `/queue`: Display the song queue\n🎵 `/nowplaying`: Check the nowplaying song\n🎵 `/info`: Show bot information and commands\n🎵 `/close`: Shut down the bot\n🎵 `/shuffle`: Shuffle the song queue",
+        inline=False
+    )
+
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(
@@ -178,11 +207,11 @@ async def bot_info(interaction: discord.Interaction):
 )
 async def shuffle_queue(interaction: discord.Interaction):
     if len(queue) < 2:
-        await interaction.response.send_message("The queue must have at least two songs to be shuffled.")
+        await interaction.response.send_message("The queue must have at least two songs to be shuffled.", ephemeral=True)
         return
 
     random.shuffle(queue)
-    await interaction.response.send_message("The queue has been shuffled.")
+    await interaction.response.send_message("The queue has been shuffled.", ephemeral=True)
     
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -230,4 +259,4 @@ async def now_playing(interaction: discord.Interaction):
         embed.add_field(name="Duration", value=str(duration // 60) + ':' + str(duration % 60).zfill(2), inline=False)
         await interaction.response.send_message(embed=embed)
     else:
-        await interaction.response.send_message("No song is currently playing.")
+        await interaction.response.send_message("No song is currently playing.", ephemeral=True)
