@@ -14,7 +14,7 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
 from commands.audio import *
-from commands.games import *
+from commands import games
 from commands.movies import *
 from commands.xp import *
 

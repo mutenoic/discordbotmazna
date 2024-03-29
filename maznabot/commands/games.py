@@ -1,163 +1,117 @@
-from main import random, asyncio
+from main import random, discord, asyncio
 from config import bot
-from yt_dlp import YoutubeDL
-from src import get_info
-from typing import Union
-from config import bot
-
-
 
 @bot.tree.command(
-    name="guess",
-    description="Play a number guessing game. The bot will generate a random number between 1 and 100, and you have to guess it.",
+    name="startgame",
+    description="Start a text-based adventure game. Explore rooms, fight monsters, and collect treasures."
 )
-async def number_guessing_game(ctx):
-    number_to_guess = random.randint(1, 100)
-    attempts = 0
-    max_attempts = 5
+async def text_adventure_game(ctx: discord.Interaction):
+    player_hp = 100
+    player_gold = 0
+    player_inventory = []
 
-    await ctx.reply("I've picked a number between 1 and 100. Try to guess it!")
+    game_map = {
+        "start": {
+            "description": "You find yourself in a dark and mysterious maze.",
+            "exits": {"left": "trap_room", "right": "treasure_room"}
+        },
+        "trap_room": {
+            "description": "You've entered a trap room. You are attacked by a giant spider!",
+            "monster": "giant spider",
+            "monster_hp": 50,
+            "monster_attack": 20,
+            "reward": {"gold": 50}
+        },
+        "treasure_room": {
+            "description": "You've found a room filled with treasures!",
+            "reward": {"gold": 100, "item": "magic sword"}
+        }
+    }
 
-    while attempts < max_attempts:
-        def check(message):
-            return message.author == ctx.author and message.channel == ctx.channel and message.content.isdigit()
+    current_room = "start"
 
-        try:
-            guess = await bot.wait_for("message", check=check, timeout=30.0)
-            guess = int(guess.content)
+    while True:
+        message_content = game_map[current_room]["description"] + "\n"
 
-            if guess == number_to_guess:
-                await ctx.reply(f"Congratulations! You guessed the number {number_to_guess} correctly!")
+        if "monster" in game_map[current_room]:
+            monster_name = game_map[current_room]["monster"]
+            monster_hp = game_map[current_room]["monster_hp"]
+            monster_attack = game_map[current_room]["monster_attack"]
+
+            # Fight the monster
+            message_content += f"You encounter a {monster_name}!\n"
+
+            # Battle logic
+            while player_hp > 0 and monster_hp > 0:
+                # Player attacks
+                player_damage = random.randint(10, 20)
+                monster_hp -= player_damage
+                message_content += f"You attack the {monster_name} for {player_damage} damage!\n"
+
+                if monster_hp <= 0:
+                    break
+
+                # Monster attacks
+                monster_damage = random.randint(10, 20)
+                player_hp -= monster_damage
+                message_content += f"The {monster_name} attacks you for {monster_damage} damage!\n"
+
+                if player_hp <= 0:
+                    break
+
+            # Check battle outcome
+            if player_hp > 0:
+                # Player wins
+                message_content += f"You defeated the {monster_name}!\n"
+                # Add reward to player
+                player_gold += game_map[current_room]["reward"]["gold"]
+            else:
+                # Player loses
+                message_content += "You were defeated by the monster. Game Over.\n"
+                break
+
+        # Check if the current room has a reward
+        if "reward" in game_map[current_room]:
+            # Add reward to player
+            player_gold += game_map[current_room]["reward"]["gold"]
+            if "item" in game_map[current_room]["reward"]:
+                player_inventory.append(game_map[current_room]["reward"]["item"])
+
+        # Display player stats
+        message_content += f"Current Gold: {player_gold}\nInventory: {', '.join(player_inventory)}\n"
+
+        # Check if the current room has exits
+        if "exits" in game_map[current_room]:
+            # Allow player to choose next room using buttons
+            exits = game_map[current_room]["exits"]
+            buttons = []
+            for direction, room in exits.items():
+                buttons.append(discord.ui.Button(style=discord.ButtonStyle.primary, label=direction.capitalize(), custom_id=room))
+
+            # Create a view with buttons
+            view = discord.ui.View()
+            for button in buttons:
+                view.add_item(button)
+
+            message_content += "Where do you want to go?\n"
+
+            # Send message with buttons
+            message = await ctx.send(message_content, view=view)
+
+            try:
+                # Wait for user choice
+                interaction = await bot.wait_for("button_click", check=lambda i: i.user == ctx.author and i.message == message, timeout=30)
+                next_room = interaction.custom_id
+                if next_room in exits.values():
+                    current_room = next_room
+                else:
+                    await interaction.response.send_message("Invalid choice. Please choose again.")
+            except asyncio.TimeoutError:
+                await ctx.send("You took too long to decide. Game Over.")
                 return
-            elif guess < number_to_guess:
-                await ctx.reply("Too low! Try guessing higher.")
-            else:
-                await ctx.reply("Too high! Try guessing lower.")
 
-            attempts += 1
-        except asyncio.TimeoutError:
-            await ctx.reply("Sorry, you took too long to guess. The number was {number_to_guess}.")
-            return
-
-    await ctx.reply(f"You've used up all your attempts! The number was {number_to_guess}.")
-
-
-@bot.tree.command(
-    name="quiz",
-    description="Play a trivia quiz game. Answer questions by selecting the correct option.",
-)
-async def trivia_quiz(ctx):
-    questions = [
-        {
-            "question": "What is the capital of France?",
-            "options": ["London", "Paris", "Berlin", "Rome"],
-            "answer": "Paris",
-        },
-        {
-            "question": "Who wrote 'Romeo and Juliet'?",
-            "options": ["William Shakespeare", "Jane Austen", "Charles Dickens", "Leo Tolstoy"],
-            "answer": "William Shakespeare",
-        },
-        {
-            "question": "What is the chemical symbol for water?",
-            "options": ["H2O", "CO2", "CH4", "NaCl"],
-            "answer": "H2O",
-        },
-    ]
-
-    score = 0
-
-    await ctx.reply("Welcome to the trivia quiz! Get ready to answer some questions.")
-
-    for question in questions:
-        options = "\n".join(
-            [f"{i}. {option}" for i, option in enumerate(question["options"], start=1)])
-        await ctx.reply(f"{question['question']}\n{options}")
-
-        def check(message):
-            return message.author == ctx.author and message.channel == ctx.channel and message.content.isdigit() and 1 <= int(message.content) <= len(question["options"])
-
-        try:
-            answer = await bot.wait_for("message", check=check, timeout=30.0)
-            answer = int(answer.content)
-
-            if question["options"][answer - 1] == question["answer"]:
-                await ctx.reply("Correct answer!")
-                score += 1
-            else:
-                await ctx.reply("Wrong answer!")
-        except asyncio.TimeoutError:
-            await ctx.reply("Time's up! Moving to the next question.")
-
-    await ctx.reply(f"Quiz finished! Your score: {score}/{len(questions)}.")
-
-
-@bot.tree.command(
-    name="hangman",
-    description="Play a game of Hangman. Try to guess the word within a limited number of attempts.",
-)
-async def hangman(ctx):
-    words = ["apple", "banana", "cherry", "orange", "strawberry", "grape"]
-    word_to_guess = random.choice(words)
-    guessed_letters = []
-    attempts = 6  # Number of attempts allowed
-    revealed_word = ["_" if letter.isalpha(
-    ) else letter for letter in word_to_guess]
-
-    await ctx.reply("Welcome to Hangman! Try to guess the word by typing a letter.")
-
-    while attempts > 0:
-        hangman_display = f"{' '.join(revealed_word)}\n"
-        hangman_display += "Guessed Letters: " + \
-            ", ".join(guessed_letters) + "\n"
-        hangman_display += f"Attempts Remaining: {attempts}\n"
-        hangman_display += hangman_art(6 - attempts)  # Display Hangman art
-        await ctx.reply(hangman_display)
-
-        def check(message):
-            return (
-                message.author == ctx.author
-                and message.channel == ctx.channel
-                and message.content.isalpha()
-                and len(message.content) == 1
-            )
-
-        try:
-            guess = await bot.wait_for("message", check=check, timeout=30.0)
-            guess = guess.content.lower()
-
-            if guess in guessed_letters:
-                await ctx.reply("You've already guessed that letter. Try another one.")
-                continue
-
-            guessed_letters.append(guess)
-
-            if guess in word_to_guess:
-                for i, letter in enumerate(word_to_guess):
-                    if letter == guess:
-                        revealed_word[i] = guess
-                if "_" not in revealed_word:
-                    await ctx.reply("Congratulations! You've guessed the word: " + word_to_guess)
-                    return
-                await ctx.reply("Correct guess!")
-            else:
-                attempts -= 1
-                await ctx.reply(f"Incorrect guess! Attempts remaining: {attempts}")
-        except asyncio.TimeoutError:
-            await ctx.reply("Time's up! The word was: " + word_to_guess)
-            return
-
-    await ctx.reply("You've used up all your attempts! The word was: " + word_to_guess)
-
-
-def hangman_art(wrong_attempts):
-    hangman_parts = [
-        "  O  ",
-        " \|/ ",
-        "  |  ",
-        " / \ ",
-    ]
-    hangman_display = ""
-    for i in range(wrong_attempts):
-        hangman_display += hangman_parts[i] + "\n"
-    return hangman_display
+        # Check if player has won the game
+        # End the game loop if necessary
+        if current_room == "final_room":
+            await ctx.send("Congratulations! You have reached the end of the dungeon.")
+            break
