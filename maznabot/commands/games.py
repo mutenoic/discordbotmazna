@@ -1,117 +1,60 @@
-from main import random, discord, asyncio
+import discord
+from discord.ext import commands
+from discord.ui import Button, View
+
+# Ensure ButtonStyle is imported correctly
+ButtonStyle = discord.ButtonStyle
+
+# Import the bot from the configuration file
 from config import bot
 
-@bot.tree.command(
-    name="startgame",
-    description="Start a text-based adventure game. Explore rooms, fight monsters, and collect treasures."
-)
-async def text_adventure_game(ctx: discord.Interaction):
-    player_hp = 100
-    player_gold = 0
-    player_inventory = []
+# Define the Player class
+class Player:
+    def __init__(self):
+        self.hp = 100
+        self.gold = 0
+        self.inventory = []
 
-    game_map = {
-        "start": {
-            "description": "You find yourself in a dark and mysterious maze.",
-            "exits": {"left": "trap_room", "right": "treasure_room"}
-        },
-        "trap_room": {
-            "description": "You've entered a trap room. You are attacked by a giant spider!",
-            "monster": "giant spider",
-            "monster_hp": 50,
-            "monster_attack": 20,
-            "reward": {"gold": 50}
-        },
-        "treasure_room": {
-            "description": "You've found a room filled with treasures!",
-            "reward": {"gold": 100, "item": "magic sword"}
+# Define the Game class
+class Game:
+    def __init__(self):
+        self.current_room = "start"
+        self.rooms = {
+            "start": {"description": "You are at the entrance of a dark dungeon.", "options": {"Go left": "left_room", "Go right": "right_room"}},
+            "left_room": {"description": "You are in a room with a spooky ghost.", "options": {"Go back": "start"}},
+            "right_room": {"description": "You find a room filled with treasure!", "options": {"Go back": "start"}}
         }
-    }
 
-    current_room = "start"
+# Define the View for the game
+class GameView(View):
+    def __init__(self, game, player):
+        super().__init__(timeout=180)  # Timeout for button interaction
+        self.game = game
+        self.player = player
 
-    while True:
-        message_content = game_map[current_room]["description"] + "\n"
+    async def on_timeout(self):
+        print("The game has timed out.")
 
-        if "monster" in game_map[current_room]:
-            monster_name = game_map[current_room]["monster"]
-            monster_hp = game_map[current_room]["monster_hp"]
-            monster_attack = game_map[current_room]["monster_attack"]
+# Define the Button for directions
+class DirectionButton(Button):
+    def __init__(self, label, destination, game, player):
+        super().__init__(label=label, style=ButtonStyle.primary)  # Correctly reference ButtonStyle
+        self.destination = destination
+        self.game = game
+        self.player = player
 
-            # Fight the monster
-            message_content += f"You encounter a {monster_name}!\n"
+    async def callback(self, interaction):
+        self.game.current_room = self.destination
+        await interaction.response.edit_message(content=self.game.rooms[self.destination]['description'], view=GameView(self.game, self.player))
+        await interaction.followup.send(f'You moved to {self.destination}.', ephemeral=True)
 
-            # Battle logic
-            while player_hp > 0 and monster_hp > 0:
-                # Player attacks
-                player_damage = random.randint(10, 20)
-                monster_hp -= player_damage
-                message_content += f"You attack the {monster_name} for {player_damage} damage!\n"
-
-                if monster_hp <= 0:
-                    break
-
-                # Monster attacks
-                monster_damage = random.randint(10, 20)
-                player_hp -= monster_damage
-                message_content += f"The {monster_name} attacks you for {monster_damage} damage!\n"
-
-                if player_hp <= 0:
-                    break
-
-            # Check battle outcome
-            if player_hp > 0:
-                # Player wins
-                message_content += f"You defeated the {monster_name}!\n"
-                # Add reward to player
-                player_gold += game_map[current_room]["reward"]["gold"]
-            else:
-                # Player loses
-                message_content += "You were defeated by the monster. Game Over.\n"
-                break
-
-        # Check if the current room has a reward
-        if "reward" in game_map[current_room]:
-            # Add reward to player
-            player_gold += game_map[current_room]["reward"]["gold"]
-            if "item" in game_map[current_room]["reward"]:
-                player_inventory.append(game_map[current_room]["reward"]["item"])
-
-        # Display player stats
-        message_content += f"Current Gold: {player_gold}\nInventory: {', '.join(player_inventory)}\n"
-
-        # Check if the current room has exits
-        if "exits" in game_map[current_room]:
-            # Allow player to choose next room using buttons
-            exits = game_map[current_room]["exits"]
-            buttons = []
-            for direction, room in exits.items():
-                buttons.append(discord.ui.Button(style=discord.ButtonStyle.primary, label=direction.capitalize(), custom_id=room))
-
-            # Create a view with buttons
-            view = discord.ui.View()
-            for button in buttons:
-                view.add_item(button)
-
-            message_content += "Where do you want to go?\n"
-
-            # Send message with buttons
-            message = await ctx.send(message_content, view=view)
-
-            try:
-                # Wait for user choice
-                interaction = await bot.wait_for("button_click", check=lambda i: i.user == ctx.author and i.message == message, timeout=30)
-                next_room = interaction.custom_id
-                if next_room in exits.values():
-                    current_room = next_room
-                else:
-                    await interaction.response.send_message("Invalid choice. Please choose again.")
-            except asyncio.TimeoutError:
-                await ctx.send("You took too long to decide. Game Over.")
-                return
-
-        # Check if player has won the game
-        # End the game loop if necessary
-        if current_room == "final_room":
-            await ctx.send("Congratulations! You have reached the end of the dungeon.")
-            break
+# Define the command to start the game
+@bot.tree.command(name="startgame", description="Start a text-based adventure game.")
+async def start_game(interaction: discord.Interaction):
+    game = Game()
+    player = Player()
+    view = GameView(game, player)
+    initial_text = game.rooms[game.current_room]['description']
+    for option, destination in game.rooms[game.current_room]['options'].items():
+        view.add_item(DirectionButton(option, destination, game, player))
+    await interaction.response.send_message(initial_text, view=view)
