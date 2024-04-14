@@ -10,8 +10,7 @@ import config
 import random
 import mutagen
 from src import get_info
-import spotipy
-from spotipy.oauth2 import SpotifyOAuth
+
 
 from commands.audio import *
 from commands import games
