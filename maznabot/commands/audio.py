@@ -11,6 +11,8 @@ local_image_path = "../resources/bot_discord.png"
 
 current_song = {}
 queue = []
+
+
 async def play_next_song(ctx):
     global skip_song, current_song
 
@@ -56,6 +58,7 @@ async def play_song(ctx, url, info_dict):
     except Exception as e:
         logging.error(f"An error occurred while playing the song: {e}")
 
+
 @bot.tree.command(
     name="play",
     description="Command to play a song"
@@ -64,9 +67,10 @@ async def play(interaction: discord.Interaction, link: str = None):
     global Vc, skip_song
     skip_song = False
 
+    await interaction.response.defer(ephemeral=True, thinking=True)
     try:
         if interaction.user.voice is None:
-            await interaction.response.send_message("You need to be in a voice channel to use this command", ephemeral=True)
+            await interaction.edit_original_response(content="You need to be in a voice channel to use this command")
             return
         elif Vc is None or not Vc.is_connected():
             Vc = await interaction.user.voice.channel.connect()
@@ -77,6 +81,7 @@ async def play(interaction: discord.Interaction, link: str = None):
     try:
         if not Vc:
             logging.warning("The bot is not in a voice channel.")
+            await interaction.edit_original_response(content="The bot is not in a voice channel.")
             return
 
         ydl_opts = {
@@ -95,16 +100,17 @@ async def play(interaction: discord.Interaction, link: str = None):
         if not Vc.is_playing() and not Vc.is_paused():
             queue.append((url, info_dict))
             await play_song(interaction, url, info_dict)
-            await interaction.response.send_message(f"Now playing {info_dict['title']}!", ephemeral=True)
+            await interaction.edit_original_response(content=f"Now playing {info_dict['title']}!")
 
         else:
             queue.append((url, info_dict))
-            await interaction.response.send_message(f"Queued {info_dict['title']}", ephemeral=True)
+            await interaction.edit_original_response(content=f"Queued {info_dict['title']}")
 
     except Exception as e:
         logging.error(f"An error occurred while queuing the song: {e}")
+        await interaction.edit_original_response(content="An error occurred while queuing the song.")
 
-        
+
 async def while_playing_song(ctx):
     global Vc, Tune, skip_song
 
@@ -114,6 +120,7 @@ async def while_playing_song(ctx):
     if len(queue) > 0 and not Vc.is_playing() and not skip_song:
         await play_next_song(ctx)
 
+
 @bot.tree.command(name="pause", description="Command to pause the currently playing song")
 async def pause(interaction: discord.Interaction):
     if Vc.is_playing():
@@ -121,6 +128,7 @@ async def pause(interaction: discord.Interaction):
         await interaction.response.send_message("Paused the song.", ephemeral=True)
     else:
         await interaction.response.send_message("No song is currently playing.", ephemeral=True)
+
 
 @bot.tree.command(name="resume", description="Command to resume the paused song")
 async def resume(interaction: discord.Interaction):
@@ -130,6 +138,7 @@ async def resume(interaction: discord.Interaction):
         await interaction.response.send_message("Resumed the song.", ephemeral=True)
     else:
         await interaction.response.send_message("The song is not paused.", ephemeral=True)
+
 
 @bot.tree.command(
     name="skip",
@@ -147,6 +156,8 @@ async def skip(interaction: discord.Interaction):
     await interaction.response.send_message("Skipped the song.", ephemeral=True)
     if len(queue) > 0:
         await play_next_song(interaction)
+
+
 @bot.tree.command(
     name="queue",
     description="Command to display the song queue"
@@ -156,24 +167,27 @@ async def show_queue(interaction: discord.Interaction):
         await interaction.response.send_message("The queue is empty.", ephemeral=True)
         return
 
-    embed = discord.Embed(color=0x3498db, title="Song Queue", description="Here is the current song queue:")
+    embed = discord.Embed(color=0x3498db, title="Song Queue",
+                          description="Here is the current song queue:")
 
     for i, (url, info_dict) in enumerate(queue, start=1):
         title = info_dict.get("title", "Unknown Title")
         duration = info_dict.get("duration", 0)
         minutes, seconds = divmod(duration, 60)
         duration_formatted = f"{minutes}:{seconds:02}"
-        embed.add_field(name=f"#{i} - {title}", value=f"Duration: {duration_formatted}", inline=False)
+        embed.add_field(
+            name=f"#{i} - {title}", value=f"Duration: {duration_formatted}", inline=False)
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
-    
+
+
 @bot.tree.command(
     name="info",
     description="Command to show bot information and commands"
 )
 async def bot_info(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="🎵 LEFYBOT 🎵", 
+        title="🎵 LEFYBOT 🎵",
         description="🚀💫 **Welcome to the world of LEFYBOT, where music meets magic!** 💫🚀"
     )
 
@@ -201,6 +215,7 @@ async def bot_info(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
 
+
 @bot.tree.command(
     name="shuffle",
     description="Command to shuffle the song queue"
@@ -212,7 +227,8 @@ async def shuffle_queue(interaction: discord.Interaction):
 
     random.shuffle(queue)
     await interaction.response.send_message("The queue has been shuffled.", ephemeral=True)
-    
+
+
 @bot.event
 async def on_voice_state_update(member, before, after):
     global Vc
@@ -229,6 +245,7 @@ async def on_voice_state_update(member, before, after):
             Vc = await after.channel.connect()
 
     pass
+
 
 @bot.tree.command(name="close")
 async def close(ctx):
@@ -256,7 +273,8 @@ async def now_playing(interaction: discord.Interaction):
             description=f"**[{title} - {artist}]** from **{album}**"
         )
 
-        embed.add_field(name="Duration", value=str(duration // 60) + ':' + str(duration % 60).zfill(2), inline=False)
+        embed.add_field(name="Duration", value=str(
+            duration // 60) + ':' + str(duration % 60).zfill(2), inline=False)
         await interaction.response.send_message(embed=embed)
     else:
         await interaction.response.send_message("No song is currently playing.", ephemeral=True)
